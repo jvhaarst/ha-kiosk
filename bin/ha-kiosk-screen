@@ -209,8 +209,12 @@ def main() -> int:
                     log(f"touch device went away: {err}")
                     touch = None
                 if not scheduled:
+                    # A press and its release arrive as separate readable
+                    # events, so only announce the first one; the rest just
+                    # push the deadline out again.
+                    if not awake_until:
+                        log(f"touch: waking for {touch_seconds}s")
                     awake_until = time.monotonic() + touch_seconds
-                    log(f"touch: waking for {touch_seconds}s")
         else:
             time.sleep(timeout)
 
