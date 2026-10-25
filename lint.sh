@@ -9,7 +9,7 @@ set -eu
 
 cd "$(dirname "$0")"
 
-RUFF="${RUFF_VERSION:-0.14.2}"
+RUFF="${RUFF_VERSION:-0.17.2}"
 BIOME="${BIOME_VERSION:-2.6.3}"
 
 status=0
