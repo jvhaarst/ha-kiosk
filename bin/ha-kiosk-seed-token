@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""Seed a Home Assistant long-lived access token into Chromium's localStorage.
+
+The Home Assistant frontend does not accept an ``Authorization: Bearer`` header
+the way the REST and WebSocket APIs do. It reads its credentials from
+``localStorage`` under the key ``hassTokens``, parsing them in
+``loadTokens()`` without validating where the value came from. Writing that key
+for the Home Assistant origin therefore logs the kiosk in with no password
+prompt and no login screen.
+
+This script attaches to an already-running Chromium over the DevTools Protocol,
+finds the tab showing Home Assistant, writes the key, and reloads the page. It
+is idempotent: running it against an already-seeded browser just rewrites the
+same value.
+
+The WebSocket client below is deliberately written against the standard library
+only, so the Pi needs no extra packages.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import socket
+import struct
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+# A long-lived access token is valid for ten years. The frontend treats the
+# token as expired once Date.now() exceeds `expires`, and refreshing throws
+# when `refresh_token` is empty, so `expires` has to sit beyond the token's own
+# lifetime rather than at a conventional session length.
+TEN_YEARS_MS = 10 * 365 * 24 * 60 * 60 * 1000
+
+
+def log(msg: str) -> None:
+    print(f"[ha-kiosk-seed] {msg}", file=sys.stderr, flush=True)
+
+
+class WebSocket:
+    """The smallest RFC 6455 client that can carry DevTools Protocol traffic.
+
+    Only text frames are needed, and the DevTools endpoint never fragments its
+    replies in practice, but continuation frames are handled anyway so a large
+    response cannot silently truncate.
+    """
+
+    def __init__(self, url: str, timeout: float = 15.0) -> None:
+        parts = urllib.parse.urlparse(url)
+        if parts.scheme != "ws":
+            raise ValueError(f"expected a ws:// URL, got {url!r}")
+        host = parts.hostname or "127.0.0.1"
+        port = parts.port or 80
+        path = parts.path or "/"
+        if parts.query:
+            path = f"{path}?{parts.query}"
+
+        self._sock = socket.create_connection((host, port), timeout=timeout)
+        self._buf = b""
+
+        key = base64.b64encode(os.urandom(16)).decode()
+        # No Origin header is sent on purpose. Chromium rejects DevTools
+        # WebSocket upgrades that carry an unapproved Origin unless
+        # --remote-allow-origins is passed, and omitting it avoids that.
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        self._sock.sendall(request.encode())
+
+        while b"\r\n\r\n" not in self._buf:
+            chunk = self._sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("connection closed during WebSocket handshake")
+            self._buf += chunk
+        header, self._buf = self._buf.split(b"\r\n\r\n", 1)
+        status = header.split(b"\r\n", 1)[0].decode(errors="replace")
+        if " 101 " not in status:
+            raise RuntimeError(f"WebSocket handshake rejected: {status}")
+
+    def _recv_exactly(self, n: int) -> bytes:
+        while len(self._buf) < n:
+            chunk = self._sock.recv(65536)
+            if not chunk:
+                raise RuntimeError("connection closed while reading a frame")
+            self._buf += chunk
+        out, self._buf = self._buf[:n], self._buf[n:]
+        return out
+
+    def send(self, text: str) -> None:
+        payload = text.encode()
+        header = bytearray([0x81])  # FIN set, opcode 1 (text)
+        length = len(payload)
+        if length < 126:
+            header.append(0x80 | length)
+        elif length < 1 << 16:
+            header.append(0x80 | 126)
+            header += struct.pack(">H", length)
+        else:
+            header.append(0x80 | 127)
+            header += struct.pack(">Q", length)
+        # Clients must mask every frame they send.
+        mask = os.urandom(4)
+        header += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self._sock.sendall(bytes(header) + masked)
+
+    def recv(self) -> str:
+        chunks: list[bytes] = []
+        while True:
+            first, second = self._recv_exactly(2)
+            fin = bool(first & 0x80)
+            opcode = first & 0x0F
+            length = second & 0x7F
+            if length == 126:
+                (length,) = struct.unpack(">H", self._recv_exactly(2))
+            elif length == 127:
+                (length,) = struct.unpack(">Q", self._recv_exactly(8))
+            # Servers do not mask, so there is no masking key to read.
+            payload = self._recv_exactly(length) if length else b""
+
+            if opcode == 0x8:  # close
+                raise RuntimeError("peer closed the WebSocket")
+            if opcode == 0x9:  # ping, answer with a pong carrying the payload
+                self._sock.sendall(b"\x8a" + bytes([0x80 | len(payload)]) + os.urandom(4))
+                continue
+            if opcode == 0xA:  # pong
+                continue
+
+            chunks.append(payload)
+            if fin:
+                return b"".join(chunks).decode(errors="replace")
+
+    def close(self) -> None:
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+class DevTools:
+    def __init__(self, ws_url: str) -> None:
+        self._ws = WebSocket(ws_url)
+        self._next_id = 0
+
+    def call(self, method: str, **params):
+        self._next_id += 1
+        message_id = self._next_id
+        self._ws.send(json.dumps({"id": message_id, "method": method, "params": params}))
+        # Replies are interleaved with unsolicited events, so skip anything
+        # that is not the answer to this call.
+        while True:
+            message = json.loads(self._ws.recv())
+            if message.get("id") != message_id:
+                continue
+            if "error" in message:
+                raise RuntimeError(f"{method} failed: {message['error']}")
+            return message.get("result", {})
+
+    def close(self) -> None:
+        self._ws.close()
+
+
+def token_expiry_ms(token: str) -> int:
+    """Read `exp` out of the token so `expires` matches the real lifetime.
+
+    Home Assistant issues long-lived tokens as JWTs. The signature is not
+    checked here; only the expiry claim is wanted, and a token this script
+    cannot parse simply falls back to ten years out.
+    """
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        exp = json.loads(base64.urlsafe_b64decode(payload_b64))["exp"]
+        return int(exp) * 1000
+    except Exception:
+        log("could not read an expiry from the token; assuming ten years")
+        return int(time.time() * 1000) + TEN_YEARS_MS
+
+
+def find_ha_target(debug_port: int, hass_origin: str, deadline: float) -> str:
+    """Wait for a Chromium page target on the Home Assistant origin."""
+    last_error = "no page target on the Home Assistant origin yet"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{debug_port}/json/list", timeout=5
+            ) as response:
+                targets = json.load(response)
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as err:
+            last_error = f"DevTools endpoint not up yet: {err}"
+            time.sleep(0.5)
+            continue
+
+        for target in targets:
+            if target.get("type") != "page":
+                continue
+            if not target.get("url", "").startswith(hass_origin):
+                continue
+            ws_url = target.get("webSocketDebuggerUrl")
+            if ws_url:
+                return ws_url
+        time.sleep(0.5)
+
+    raise TimeoutError(last_error)
+
+
+def wait_for_origin(client: "DevTools", origin: str, deadline: float) -> None:
+    """Block until the tab's *document* is really on the Home Assistant origin.
+
+    A DevTools target reports its destination URL as soon as navigation starts,
+    while the document in it is still the initial about:blank. about:blank has
+    an opaque origin, where touching localStorage raises "Access is denied for
+    this document", so writing too early fails even though the target looked
+    right. Ask the page what origin it actually has, and wait until it agrees.
+    """
+    last_seen = "unknown"
+    while time.time() < deadline:
+        try:
+            result = client.call(
+                "Runtime.evaluate",
+                expression="location.origin + '|' + document.readyState",
+                returnByValue=True,
+            )
+            last_seen = result.get("result", {}).get("value") or "unknown"
+            page_origin, _, ready_state = last_seen.partition("|")
+            if page_origin == origin and ready_state in ("interactive", "complete"):
+                return
+        except RuntimeError as err:
+            # The context is torn down and replaced across a navigation; that
+            # is expected here rather than fatal.
+            last_seen = f"evaluate failed: {err}"
+        time.sleep(0.5)
+
+    raise TimeoutError(f"document never reached {origin} (last saw {last_seen})")
+
+
+def main() -> int:
+    hass_url = os.environ.get("HA_URL", "").rstrip("/")
+    token_file = os.environ.get("HA_TOKEN_FILE", "")
+    debug_port = int(os.environ.get("CHROMIUM_DEBUG_PORT", "9222"))
+    timeout = float(os.environ.get("SEED_TIMEOUT", "60"))
+
+    if not hass_url:
+        log("HA_URL is not set; nothing to do")
+        return 2
+    if not token_file or not os.path.exists(token_file):
+        log(f"no token file at {token_file!r}; leaving the browser to its login screen")
+        return 0
+
+    with open(token_file, encoding="utf-8") as handle:
+        token = handle.read().strip()
+    if not token:
+        log(f"{token_file} is empty; leaving the browser to its login screen")
+        return 0
+
+    origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlparse(hass_url))
+
+    # This is the exact shape home-assistant-js-websocket documents for a
+    # long-lived token: a null clientId and an empty refresh_token.
+    auth_data = {
+        "hassUrl": origin,
+        "clientId": None,
+        "refresh_token": "",
+        "access_token": token,
+        "expires_in": TEN_YEARS_MS // 1000,
+        "expires": token_expiry_ms(token),
+    }
+
+    deadline = time.time() + timeout
+    ws_url = find_ha_target(debug_port, origin, deadline)
+    client = DevTools(ws_url)
+    try:
+        wait_for_origin(client, origin, deadline)
+        expression = (
+            "(() => { try {"
+            f"  window.localStorage.setItem('hassTokens', {json.dumps(json.dumps(auth_data))});"
+            "   return 'ok';"
+            "} catch (err) { return 'error: ' + err.message; } })()"
+        )
+        result = client.call("Runtime.evaluate", expression=expression, returnByValue=True)
+        value = result.get("result", {}).get("value")
+        if value != "ok":
+            log(f"writing hassTokens failed: {value}")
+            return 1
+        log(f"seeded hassTokens for {origin}")
+        client.call("Page.navigate", url=hass_url)
+    finally:
+        client.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

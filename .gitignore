@@ -1,0 +1,3 @@
+# Real settings. kiosk.env.example carries the shape; this carries the values.
+kiosk.env
+__pycache__/

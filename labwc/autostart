@@ -1,0 +1,19 @@
+# labwc autostart for the Home Assistant kiosk.
+#
+# On this Raspberry Pi OS image the session runs /usr/bin/labwc-pi, and BOTH
+# /etc/xdg/labwc/autostart and this file are executed. (Generic labwc
+# documentation says the user file replaces the system one; that is not what
+# happens here. Verified by putting kanshi in both and finding two of it
+# running.) So do not repeat the system file's entries - kanshi, pcmanfm-pi and
+# wf-panel-pi all start from there already.
+#
+# The file manager and the panel therefore keep running, hidden behind the
+# full-screen browser window. They cost a few tens of megabytes and nothing on
+# screen, which is a fair trade for not fighting the system session.
+#
+# Every line needs a trailing &. Without one labwc blocks until that program
+# exits and no later line ever runs.
+#
+# lwrespawn restarts the browser if it dies.
+
+/usr/bin/lwrespawn "$HOME/.local/bin/ha-kiosk-launch" &

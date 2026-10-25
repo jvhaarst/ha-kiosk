@@ -1,0 +1,59 @@
+#!/bin/sh
+# Launch Chromium full-screen on a Home Assistant dashboard and log it in.
+#
+# Started from ~/.config/labwc/autostart, normally wrapped in lwrespawn so a
+# crashed browser comes back. Keep this script in the foreground: lwrespawn
+# watches the process it starts, so backgrounding Chromium here would make it
+# look like an instant exit and trigger a respawn loop.
+
+set -eu
+
+CONFIG="${HA_KIOSK_CONFIG:-$HOME/.config/ha-kiosk/env}"
+# shellcheck source=/dev/null
+[ -f "$CONFIG" ] && . "$CONFIG"
+
+: "${HA_URL:?HA_URL is not set; copy config/ha-kiosk.env.example to $CONFIG}"
+: "${HA_DASHBOARD:=/lovelace/0}"
+: "${HA_TOKEN_FILE:=$HOME/.config/ha-kiosk/token}"
+: "${CHROMIUM_DEBUG_PORT:=9222}"
+: "${CHROMIUM_PROFILE:=$HOME/.local/share/ha-kiosk/profile}"
+
+HA_URL="${HA_URL%/}"
+TARGET="${HA_URL}${HA_DASHBOARD}"
+
+mkdir -p "$CHROMIUM_PROFILE"
+
+# Chromium records an unclean shutdown after a power cut or a killed session and
+# then offers to restore tabs, which on a kiosk means a dialog nobody can
+# dismiss. Rewriting these two keys before launch suppresses that prompt.
+PREFS="$CHROMIUM_PROFILE/Default/Preferences"
+if [ -f "$PREFS" ]; then
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' "$PREFS" || true
+fi
+
+# Seeding runs in the background because it has to wait for the browser to open
+# the page it is going to write to.
+if [ -x "$(dirname "$0")/ha-kiosk-seed-token" ]; then
+    HA_URL="$TARGET" \
+    HA_TOKEN_FILE="$HA_TOKEN_FILE" \
+    CHROMIUM_DEBUG_PORT="$CHROMIUM_DEBUG_PORT" \
+        "$(dirname "$0")/ha-kiosk-seed-token" &
+fi
+
+# --remote-debugging-port binds to 127.0.0.1 only, and Chromium refuses remote
+# debugging against the default profile, hence the dedicated --user-data-dir.
+exec chromium \
+    --kiosk \
+    --app="$TARGET" \
+    --user-data-dir="$CHROMIUM_PROFILE" \
+    --remote-debugging-port="$CHROMIUM_DEBUG_PORT" \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --no-first-run \
+    --no-default-browser-check \
+    --password-store=basic \
+    --hide-crash-restore-bubble \
+    --disable-features=Translate,TranslateUI \
+    --autoplay-policy=no-user-gesture-required \
+    --ozone-platform=wayland
