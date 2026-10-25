@@ -3,14 +3,20 @@
 # here means a clean run there.
 #
 # Needs shellcheck, uv and npx on PATH. Nothing is installed globally: uvx and
-# npx fetch pinned versions into their own caches.
+# npx fetch the linters into their own caches.
+#
+# The linters are deliberately unpinned, so this always runs the current
+# release. The cost is that a new release can turn CI red on a change that had
+# nothing to do with it: biome 2.6.3 added a rule that flagged three existing
+# files the day it landed. That is the trade for never having to review a
+# version-bump pull request for a tool that only reads the code.
+#
+# Warnings fail. A linter that reports a problem and exits 0 is not a gate, and
+# biome exits 0 on warnings unless told otherwise.
 
 set -eu
 
 cd "$(dirname "$0")"
-
-RUFF="${RUFF_VERSION:-0.17.2}"
-BIOME="${BIOME_VERSION:-2.6.3}"
 
 status=0
 run() {
@@ -29,9 +35,9 @@ run() {
 # bin/ha-kiosk-launch is POSIX sh and bin/ha-kiosk-seed-token is Python.
 run "shellcheck" shellcheck -s sh \
     bin/ha-kiosk-launch install.sh uninstall.sh deploy-card.sh lint.sh
-run "ruff check" uvx "ruff@$RUFF" check tools/ bin/ha-kiosk-seed-token
-run "ruff format" uvx "ruff@$RUFF" format --check tools/ bin/ha-kiosk-seed-token
-run "biome" npx --yes "@biomejs/biome@$BIOME" lint www/
+run "ruff check" uvx ruff@latest check tools/ bin/ha-kiosk-seed-token
+run "ruff format" uvx ruff@latest format --check tools/ bin/ha-kiosk-seed-token
+run "biome" npx --yes @biomejs/biome@latest lint --error-on-warnings www/
 
 if [ "$status" -eq 0 ]; then
     printf '\nall clean\n'

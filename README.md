@@ -150,9 +150,16 @@ the network.
 ```
 
 shellcheck over the shell scripts, ruff over the Python, and biome over the
-JavaScript. Tool versions are pinned in `lint.sh`; `uvx` and `npx` fetch them,
-so nothing is installed globally. CI runs that same script, so a clean run
-locally means a clean run there.
+JavaScript. `uvx` and `npx` fetch the linters, so nothing is installed
+globally, and they are unpinned so the current release always runs. CI runs
+that same script, so a clean run locally means a clean run there.
+
+Warnings fail, not just errors. Biome exits 0 on warnings unless told
+otherwise, and a linter that reports a problem and exits 0 is not a gate.
+
+The cost of running unpinned linters is that a new release can turn CI red on
+a change that had nothing to do with it. That is the trade for never reviewing
+a version-bump pull request for a tool that only reads the code.
 
 ## Things that cost time to find out
 

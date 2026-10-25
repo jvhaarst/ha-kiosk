@@ -48,7 +48,7 @@ class KioskShellCard extends HTMLElement {
    */
   _checkAlert() {
     const alert = this._config.alert;
-    if (!alert || !alert.entity) return;
+    if (!alert?.entity) return;
 
     const stateObj = this._hass.states[alert.entity];
     const current = stateObj ? stateObj.state : undefined;
@@ -132,7 +132,7 @@ class KioskShellCard extends HTMLElement {
    */
   _startIdleWatch() {
     const idle = this._config?.idle_return;
-    if (!idle || !idle.path || !idle.seconds || this._idleHandler) return;
+    if (!idle?.path || !idle.seconds || this._idleHandler) return;
 
     this._idleHandler = () => this._resetIdle();
     for (const event of IDLE_EVENTS) {
@@ -172,7 +172,7 @@ class KioskShellCard extends HTMLElement {
     this._idleTimer = null;
 
     const idle = this._config?.idle_return;
-    if (!idle || !idle.path || !idle.seconds) return;
+    if (!idle?.path || !idle.seconds) return;
     if (window.location.pathname === idle.path) return;
 
     const timeout = idle.seconds * 1000;
