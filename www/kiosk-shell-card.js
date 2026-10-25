@@ -34,6 +34,7 @@ class KioskShellCard extends HTMLElement {
     if (this._child) this._child.hass = hass;
     this._checkAlert();
     this._markActive();
+    this._injectCss();
   }
 
   /**
@@ -100,6 +101,7 @@ class KioskShellCard extends HTMLElement {
       if (this._hass) child.hass = this._hass;
       content.appendChild(child);
       this._child = child;
+      this._injectCss();
     }
 
     // Keep the highlight right when navigation happens elsewhere, such as the
@@ -189,6 +191,58 @@ class KioskShellCard extends HTMLElement {
       if (window.location.pathname === idle.path) return;
       this._navigate(idle.path);
     }, Math.max(due - Date.now(), 250));
+  }
+
+  /**
+   * Push a stylesheet into the wrapped card's shadow root.
+   *
+   * A last resort, for a third-party card whose layout cannot be reached any
+   * other way. The trash card is the case this exists for: in its icon style
+   * it hardcodes `grid-template-columns` to four fixed columns and ignores its
+   * own items_per_row option, so on a 720px panel it draws a thin strip across
+   * the top and leaves the rest empty. Custom properties inherit through a
+   * shadow boundary but that grid is a literal, not a variable, so nothing
+   * short of a stylesheet inside the root will do.
+   *
+   * It is re-checked on every state update because a re-render can drop
+   * anything appended to the root.
+   */
+  _injectCss() {
+    const css = this._config.card_css;
+    if (!css || !this._child) return;
+
+    const root = this._child.shadowRoot;
+    if (!root) {
+      // The card may not have rendered yet; try again shortly, but give up
+      // rather than spin forever on a card that has no shadow root at all.
+      this._cssTries = (this._cssTries || 0) + 1;
+      if (this._cssTries < 50) setTimeout(() => this._injectCss(), 100);
+      return;
+    }
+
+    // Every shadow root beneath the card gets a copy, not just the card's own.
+    // A card built from nested custom elements keeps the part worth restyling
+    // a level or two down: the trash card's .icons-container lives inside
+    // trash-card-icons-container, so a stylesheet in the outer root does
+    // nothing at all. Styles do not cross a shadow boundary, so the only way
+    // to reach it is to put one in every root.
+    const roots = [];
+    const collect = (node, depth) => {
+      if (!node || depth > 6) return;
+      roots.push(node);
+      for (const el of node.querySelectorAll("*")) {
+        if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
+      }
+    };
+    collect(root, 0);
+
+    for (const target of roots) {
+      if (target.querySelector("style[data-kiosk-shell]")) continue;
+      const style = document.createElement("style");
+      style.setAttribute("data-kiosk-shell", "");
+      style.textContent = css;
+      target.appendChild(style);
+    }
   }
 
   _navigate(path) {

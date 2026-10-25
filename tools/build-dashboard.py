@@ -198,8 +198,8 @@ def afval():
         "event_grouping": True,
         # A bin put out this morning is no longer news by the afternoon.
         "drop_todayevents_from": "12:00:00",
-        "icon_size": 50,
-        "items_per_row": 4,
+        "icon_size": int(os.environ.get("TRASH_ICON_SIZE", "210")),
+        "items_per_row": 2,
         "with_label": True,
         "refresh_rate": 60,
         "next_days": 60,
@@ -240,6 +240,24 @@ def afval():
     }
 
 
+# Stylesheets pushed into a wrapped card's shadow root, keyed by view path.
+# See _injectCss in kiosk-shell-card.js for why this is sometimes the only way.
+CARD_CSS = {
+    # The trash card's icon style hardcodes four fixed columns and ignores its
+    # own items_per_row, so it draws a thin strip across the top of the panel.
+    # Two columns of equal height fill the screen instead.
+    "afval": """
+.icons-container {
+  grid-template-columns: 1fr 1fr !important;
+  grid-auto-rows: 1fr !important;
+  height: 100% !important;
+  gap: 10px !important;
+}
+.icons-container > ha-card { height: 100% !important; }
+""",
+}
+
+
 SCREENS = [
     ("Stroom", "stroom", "mdi:transmission-tower", stroom),
     ("Lampen", "lampen", "mdi:lightbulb-group", lampen),
@@ -265,6 +283,7 @@ def build():
                     "alert": ALERT,
                     "idle_return": IDLE_RETURN,
                     "card": content(),
+                    **({"card_css": CARD_CSS[path]} if path in CARD_CSS else {}),
                 }
             ],
         }
