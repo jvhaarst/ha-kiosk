@@ -13,7 +13,12 @@ BIN="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/ha-kiosk"
 LABWC_DIR="$HOME/.config/labwc"
 
-for script in ha-kiosk-launch ha-kiosk-seed-token; do
+sudo systemctl disable --now "ha-kiosk-screen@$(id -un)" >/dev/null 2>&1 || true
+sudo rm -f /etc/systemd/system/ha-kiosk-screen@.service
+sudo systemctl daemon-reload || true
+echo "removed the panel blanking service; the backlight is left as it is"
+
+for script in ha-kiosk-launch ha-kiosk-seed-token ha-kiosk-screen; do
     rm -f "$BIN/$script" && echo "removed $BIN/$script"
 done
 

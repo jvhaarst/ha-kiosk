@@ -1,0 +1,18 @@
+[Unit]
+# Blanking is deliberately a system service rather than part of the graphical
+# session: the screen should still come on in the morning even if the browser
+# or the labwc session has died and is sitting in a respawn loop.
+Description=Kiosk panel blanking and touch wake
+After=multi-user.target
+
+[Service]
+Type=simple
+# Runs as the kiosk user, which is in `video` for the backlight and `input`
+# for the touchscreen, so this needs no root.
+User=%i
+ExecStart=/home/%i/.local/bin/ha-kiosk-screen
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

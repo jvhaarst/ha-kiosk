@@ -176,6 +176,37 @@ kernel upgrade. Nothing needs rebuilding per kernel: overlays are device tree
 blobs, not modules. The source is kept here so that a future diff against the
 upstream overlay is quick if Raspberry Pi change it.
 
+## Panel blanking
+
+`bin/ha-kiosk-screen` turns the backlight off outside waking hours and wakes
+it briefly on a touch. It is installed as a system service,
+`ha-kiosk-screen@<user>`, so the screen still comes on in the morning even if
+the browser or the session has died.
+
+```
+SCREEN_WAKE_WEEKDAY=07:00
+SCREEN_WAKE_WEEKEND=08:00
+SCREEN_SLEEP=23:30
+SCREEN_TOUCH_SECONDS=60
+SCREEN_BRIGHTNESS=5
+```
+
+The panel is an IPS LCD, so it does not burn in the way an OLED does, but it
+does retain an image when it holds the same picture for days, and a kiosk
+whose navigation bar never moves is a bad case. Blanking it while nobody is
+looking is the single biggest thing that helps.
+
+Two things the daemon handles that are easy to miss. `systemd-backlight`
+saves the brightness at shutdown and restores it at boot, so a Pi switched off
+while blanked comes back with the backlight at 0 and looks dead; the daemon
+therefore sets the correct state as soon as it starts rather than waiting for
+the next transition. And the touchscreen's event node is not stable across
+kernels, so it is looked up by name in `/proc/bus/input/devices` rather than
+hardcoded.
+
+It needs no root: the brightness file is writable by `video` and the touch
+device readable by `input`, both of which the kiosk user is already in.
+
 ## Linting
 
 ```sh

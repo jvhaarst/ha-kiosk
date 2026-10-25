@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Blank the kiosk panel outside waking hours, and wake it on a touch.
+
+The panel is an IPS LCD, which does not burn in the way an OLED does, but it
+does retain an image when it holds the same picture for days. The kiosk is a
+bad case: the navigation bar never moves at all. Turning the backlight off
+while nobody is looking is the single biggest thing that helps, and it costs
+nothing else.
+
+Hours follow the house heating programme rather than being picked at random:
+up at 07:00 on weekdays and 08:00 at weekends, down at 23:30, which is an hour
+after the heating drops to its night setting.
+
+A touch while the screen is off turns it on briefly, long enough to do one
+thing such as switching a light on. Any further touch extends that again.
+
+Everything is done with the standard library. Brightness is writable by the
+`video` group and the touch device readable by `input`, so this needs no root.
+"""
+
+from __future__ import annotations
+
+import datetime
+import os
+import re
+import select
+import struct
+import sys
+import time
+
+BACKLIGHT = "/sys/class/backlight/backlight"
+
+# struct input_event on 64-bit Linux: two 64-bit timeval fields, then type,
+# code and value. Only the size matters here, since any event at all counts as
+# someone touching the screen.
+EVENT_SIZE = struct.calcsize("llHHi")
+
+
+def log(message: str) -> None:
+    print(f"[ha-kiosk-screen] {message}", file=sys.stderr, flush=True)
+
+
+def read_config() -> dict[str, str]:
+    """Read ~/.config/ha-kiosk/env, the same file the launcher uses."""
+    path = os.environ.get("HA_KIOSK_CONFIG", os.path.expanduser("~/.config/ha-kiosk/env"))
+    config = {}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                config[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        log(f"no config at {path}; using defaults")
+    return config
+
+
+def parse_time(text: str, fallback: str) -> datetime.time:
+    try:
+        hours, _, minutes = text.partition(":")
+        return datetime.time(int(hours), int(minutes))
+    except (ValueError, AttributeError):
+        hours, _, minutes = fallback.partition(":")
+        return datetime.time(int(hours), int(minutes))
+
+
+def find_touch_device(name_fragment: str) -> str | None:
+    """Locate the touchscreen's event node by name.
+
+    The event number is not stable across kernels or reboots, so it is looked
+    up rather than hardcoded.
+    """
+    try:
+        with open("/proc/bus/input/devices", encoding="utf-8") as handle:
+            blocks = handle.read().split("\n\n")
+    except OSError:
+        return None
+
+    for block in blocks:
+        if name_fragment.lower() not in block.lower():
+            continue
+        match = re.search(r"Handlers=.*?(event\d+)", block)
+        if match:
+            return f"/dev/input/{match.group(1)}"
+    return None
+
+
+def set_brightness(level: int) -> None:
+    try:
+        with open(f"{BACKLIGHT}/brightness", "w", encoding="utf-8") as handle:
+            handle.write(str(level))
+    except OSError as err:
+        log(f"could not set brightness: {err}")
+
+
+def read_int(path: str, default: int) -> int:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return int(handle.read().strip())
+    except (OSError, ValueError):
+        return default
+
+
+def should_be_awake(now: datetime.datetime, wake_wd, wake_we, sleep_at) -> bool:
+    """True inside the waking window for the day in question.
+
+    The window never crosses midnight here, since the house settles before
+    then, so a plain comparison is enough. A sleep time earlier than the wake
+    time would be a misconfiguration rather than an overnight window.
+    """
+    wake = wake_we if now.weekday() >= 5 else wake_wd
+    return wake <= now.time() < sleep_at
+
+
+def main() -> int:
+    config = {**read_config(), **os.environ}
+
+    wake_wd = parse_time(config.get("SCREEN_WAKE_WEEKDAY", "07:00"), "07:00")
+    wake_we = parse_time(config.get("SCREEN_WAKE_WEEKEND", "08:00"), "08:00")
+    sleep_at = parse_time(config.get("SCREEN_SLEEP", "23:30"), "23:30")
+    touch_seconds = int(config.get("SCREEN_TOUCH_SECONDS", "60"))
+    touch_name = config.get("SCREEN_TOUCH_DEVICE", "EP0110M09")
+
+    max_level = read_int(f"{BACKLIGHT}/max_brightness", 15)
+    on_level = int(config.get("SCREEN_BRIGHTNESS", str(max_level)))
+    on_level = max(1, min(on_level, max_level))
+
+    log(
+        f"awake {wake_wd:%H:%M} weekdays / {wake_we:%H:%M} weekends until "
+        f"{sleep_at:%H:%M}, level {on_level}/{max_level}, "
+        f"touch wakes for {touch_seconds}s"
+    )
+
+    device_path = find_touch_device(touch_name)
+    touch = None
+    if device_path:
+        try:
+            touch = open(device_path, "rb", buffering=0)  # noqa: SIM115
+            os.set_blocking(touch.fileno(), False)
+            log(f"watching {device_path} for touches")
+        except OSError as err:
+            log(f"cannot read {device_path}: {err}; touch wake disabled")
+    else:
+        log(f"no input device matching {touch_name!r}; touch wake disabled")
+
+    # Set the right state immediately. This matters on boot: systemd-backlight
+    # restores whatever was saved at shutdown, so a Pi switched off overnight
+    # comes back with the backlight at 0 and looks dead until something fixes
+    # it.
+    awake_until = 0.0
+    state = None
+
+    while True:
+        now = datetime.datetime.now()
+        scheduled = should_be_awake(now, wake_wd, wake_we, sleep_at)
+        want = scheduled or time.monotonic() < awake_until
+
+        if want != state:
+            set_brightness(on_level if want else 0)
+            state = want
+            log(f"backlight {'on' if want else 'off'}")
+
+        # Wait for a touch, or for the next thing that could change the state.
+        timeout = 20.0
+        if awake_until:
+            remaining = awake_until - time.monotonic()
+            if 0 < remaining < timeout:
+                timeout = remaining
+
+        if touch is not None:
+            ready, _, _ = select.select([touch], [], [], timeout)
+            if ready:
+                # Drain whatever is queued; one touch produces many events.
+                try:
+                    while touch.read(EVENT_SIZE):
+                        pass
+                except (BlockingIOError, TypeError):
+                    pass
+                except OSError as err:
+                    log(f"touch device went away: {err}")
+                    touch = None
+                if not scheduled:
+                    awake_until = time.monotonic() + touch_seconds
+                    log(f"touch: waking for {touch_seconds}s")
+        else:
+            time.sleep(timeout)
+
+        if awake_until and time.monotonic() >= awake_until:
+            awake_until = 0.0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

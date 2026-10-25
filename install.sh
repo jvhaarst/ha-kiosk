@@ -18,10 +18,20 @@ echo "Installing from $SRC"
 mkdir -p "$BIN" "$CONFIG_DIR" "$LABWC_DIR" "$HOME/.local/share/ha-kiosk"
 chmod 700 "$CONFIG_DIR"
 
-for script in ha-kiosk-launch ha-kiosk-seed-token; do
+for script in ha-kiosk-launch ha-kiosk-seed-token ha-kiosk-screen; do
     install -m 755 "$SRC/bin/$script" "$BIN/$script"
     echo "  installed $BIN/$script"
 done
+
+# Panel blanking runs as a system service templated on the kiosk user, so it
+# keeps the hours even if the graphical session is broken.
+if [ -f "$SRC/systemd/ha-kiosk-screen.service" ]; then
+    sudo install -m 644 "$SRC/systemd/ha-kiosk-screen.service" \
+        /etc/systemd/system/ha-kiosk-screen@.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now "ha-kiosk-screen@$(id -un)" >/dev/null 2>&1 || true
+    echo "  installed and started ha-kiosk-screen@$(id -un)"
+fi
 
 if [ -f "$LABWC_DIR/autostart" ]; then
     cp -a "$LABWC_DIR/autostart" "$LABWC_DIR/autostart.bak-$STAMP"
