@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "ruff version pinned in lint.sh; no manifest would otherwise keep it current",
+      "customType": "regex",
+      "fileMatch": ["^lint\\.sh$"],
+      "matchStrings": ["RUFF=\"\\$\\{RUFF_VERSION:-(?<currentValue>[^}]+)\\}\""],
+      "datasourceTemplate": "pypi",
+      "depNameTemplate": "ruff"
+    },
+    {
+      "description": "biome version pinned in lint.sh",
+      "customType": "regex",
+      "fileMatch": ["^lint\\.sh$"],
+      "matchStrings": ["BIOME=\"\\$\\{BIOME_VERSION:-(?<currentValue>[^}]+)\\}\""],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@biomejs/biome"
+    }
+  ]
+}
