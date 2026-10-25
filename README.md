@@ -206,6 +206,10 @@ by substituting worst-case strings into the DOM and reading back
 `clientWidth` on a `flex: 1` element, whose `scrollWidth` is clamped to its own
 width, so every trial reported a pass.
 
+## License
+
+MIT. See `LICENSE`.
+
 ## Not done
 
 - Screen blanking, or waking on motion
