@@ -103,15 +103,36 @@ def read_int(path: str, default: int) -> int:
         return default
 
 
-def should_be_awake(now: datetime.datetime, wake_wd, wake_we, sleep_at) -> bool:
+WEEKDAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def parse_days(text: str) -> set[int]:
+    """A comma-separated list of weekday names into weekday() numbers."""
+    days = set()
+    for part in (text or "").split(","):
+        name = part.strip().lower()[:3]
+        if name in WEEKDAY_NAMES:
+            days.add(WEEKDAY_NAMES.index(name))
+    return days
+
+
+def should_be_awake(now, wake_wd, wake_we, sleep_at, gap_days, gap_from, gap_to) -> bool:
     """True inside the waking window for the day in question.
 
     The window never crosses midnight here, since the house settles before
     then, so a plain comparison is enough. A sleep time earlier than the wake
     time would be a misconfiguration rather than an overnight window.
+
+    Some days have a hole in the middle, for the hours the house is empty.
+    That follows the heating exactly, unlike the evening, which runs an hour
+    past it.
     """
     wake = wake_we if now.weekday() >= 5 else wake_wd
-    return wake <= now.time() < sleep_at
+    if not (wake <= now.time() < sleep_at):
+        return False
+    if now.weekday() in gap_days and gap_from <= now.time() < gap_to:
+        return False
+    return True
 
 
 def main() -> int:
@@ -121,6 +142,9 @@ def main() -> int:
     wake_we = parse_time(config.get("SCREEN_WAKE_WEEKEND", "08:00"), "08:00")
     sleep_at = parse_time(config.get("SCREEN_SLEEP", "23:30"), "23:30")
     touch_seconds = int(config.get("SCREEN_TOUCH_SECONDS", "60"))
+    gap_days = parse_days(config.get("SCREEN_MIDDAY_OFF_DAYS", ""))
+    gap_from = parse_time(config.get("SCREEN_MIDDAY_FROM", "08:30"), "08:30")
+    gap_to = parse_time(config.get("SCREEN_MIDDAY_TO", "17:00"), "17:00")
     touch_name = config.get("SCREEN_TOUCH_DEVICE", "EP0110M09")
 
     max_level = read_int(f"{BACKLIGHT}/max_brightness", 15)
@@ -132,6 +156,9 @@ def main() -> int:
         f"{sleep_at:%H:%M}, level {on_level}/{max_level}, "
         f"touch wakes for {touch_seconds}s"
     )
+    if gap_days:
+        named = ", ".join(WEEKDAY_NAMES[d].capitalize() for d in sorted(gap_days))
+        log(f"also off {gap_from:%H:%M}-{gap_to:%H:%M} on {named}")
 
     device_path = find_touch_device(touch_name)
     touch = None
@@ -154,7 +181,7 @@ def main() -> int:
 
     while True:
         now = datetime.datetime.now()
-        scheduled = should_be_awake(now, wake_wd, wake_we, sleep_at)
+        scheduled = should_be_awake(now, wake_wd, wake_we, sleep_at, gap_days, gap_from, gap_to)
         want = scheduled or time.monotonic() < awake_until
 
         if want != state:

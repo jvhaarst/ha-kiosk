@@ -187,9 +187,20 @@ the browser or the session has died.
 SCREEN_WAKE_WEEKDAY=07:00
 SCREEN_WAKE_WEEKEND=08:00
 SCREEN_SLEEP=23:30
+SCREEN_MIDDAY_OFF_DAYS=Mon,Thu
+SCREEN_MIDDAY_FROM=08:30
+SCREEN_MIDDAY_TO=17:00
 SCREEN_TOUCH_SECONDS=60
 SCREEN_BRIGHTNESS=5
 ```
+
+Which works out as:
+
+| Day | On |
+| --- | --- |
+| Mon, Thu | 07:00-08:30, 17:00-23:30 |
+| Tue, Wed, Fri | 07:00-23:30 |
+| Sat, Sun | 08:00-23:30 |
 
 The panel is an IPS LCD, so it does not burn in the way an OLED does, but it
 does retain an image when it holds the same picture for days, and a kiosk
