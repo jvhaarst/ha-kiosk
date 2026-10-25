@@ -10,7 +10,7 @@ set -eu
 cd "$(dirname "$0")"
 
 RUFF="${RUFF_VERSION:-0.14.2}"
-BIOME="${BIOME_VERSION:-2.3.8}"
+BIOME="${BIOME_VERSION:-2.6.3}"
 
 status=0
 run() {
