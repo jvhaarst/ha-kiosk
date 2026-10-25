@@ -175,47 +175,67 @@ def deurbel():
 def afval():
     """Waste collection, drawn by the trash-card HACS plugin.
 
+    This mirrors the configuration the user already runs on their own Thuis
+    dashboard, so the kiosk shows the same thing in the same style rather than
+    a second opinion. The compactness comes from `card_style: icon` together
+    with `event_grouping`, which collapses the run of future dates down to the
+    next pickup; `next_days` only bounds how far ahead it will look.
+
     `pattern` matches on the calendar event titles, so these strings have to be
     exactly what the collector publishes. The four here are the usual Dutch
-    streams; set TRASH_CALENDAR to your own calendar entity.
+    streams, with a catch-all last entry for anything else; set TRASH_CALENDAR
+    to your own calendar entity.
     """
     return {
         "type": "custom:trash-card",
         "entities": [os.environ.get("TRASH_CALENDAR", "calendar.waste_collection")],
-        "card_style": "card",
-        "hide_time_range": False,
-        "filter_events": False,
+        "card_style": "icon",
+        "layout": "vertical",
+        "alignment_style": "left",
+        "color_mode": "background",
+        "day_style": "counter",
+        "day_style_format": "yyyy.MM.dd",
+        "event_grouping": True,
+        # A bin put out this morning is no longer news by the afternoon.
+        "drop_todayevents_from": "12:00:00",
+        "icon_size": 50,
+        "items_per_row": 4,
+        "with_label": True,
+        "refresh_rate": 60,
         "next_days": 60,
-        "items_per_row": 2,
+        "filter_events": False,
+        "use_summary": False,
+        "hide_time_range": False,
         "pattern": [
             {
-                "type": "waste",
+                "type": "GFT",
                 "label": "GFT",
-                "icon": "mdi:leaf",
-                "color": "green",
+                "icon": "mdi:flower",
+                "color": "light-green",
                 "pattern": "GFT",
             },
             {
-                "type": "recycle",
+                "type": "paper",
                 "label": "Papier",
-                "icon": "mdi:newspaper-variant-multiple",
-                "color": "blue",
+                "icon": "mdi:newspaper-variant-multiple-outline",
+                "color": "indigo",
                 "pattern": "Papier",
             },
             {
                 "type": "recycle",
                 "label": "PMD",
-                "icon": "mdi:bottle-soda-classic",
+                "icon": "mdi:trash-can-outline",
                 "color": "orange",
-                "pattern": "PMD",
+                "pattern": "pmd",
             },
             {
                 "type": "waste",
                 "label": "Restafval",
                 "icon": "mdi:trash-can",
-                "color": "grey",
+                "color": "dark-grey",
                 "pattern": "Restafval",
             },
+            {"type": "others", "icon": "mdi:dump-truck", "color": "green"},
         ],
     }
 
