@@ -242,18 +242,28 @@ def afval():
 
 # Stylesheets pushed into a wrapped card's shadow root, keyed by view path.
 # See _injectCss in kiosk-shell-card.js for why this is sometimes the only way.
+#
+# The trash card's icon style hardcodes four fixed columns and ignores its own
+# items_per_row, so it draws a thin strip across the top of the panel. Two
+# columns of equal height fill the screen instead. Its day-counter badge is
+# 11.2px, sized for a phone; on a wall panel that is the one number people
+# actually want to read from across the room.
 CARD_CSS = {
-    # The trash card's icon style hardcodes four fixed columns and ignores its
-    # own items_per_row, so it draws a thin strip across the top of the panel.
-    # Two columns of equal height fill the screen instead.
-    "afval": """
-.icons-container {
+    "afval": f"""
+.icons-container {{
   grid-template-columns: 1fr 1fr !important;
   grid-auto-rows: 1fr !important;
   height: 100% !important;
   gap: 10px !important;
-}
-.icons-container > ha-card { height: 100% !important; }
+}}
+.icons-container > ha-card {{ height: 100% !important; }}
+.badge {{
+  font-size: {os.environ.get("TRASH_BADGE_SIZE", "40")}px !important;
+  line-height: 1.25 !important;
+  padding: 2px 20px !important;
+  font-weight: 500 !important;
+  border-radius: 999px !important;
+}}
 """,
 }
 
