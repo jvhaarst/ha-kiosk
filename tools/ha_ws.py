@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Minimal Home Assistant WebSocket client, stdlib only (plus ssl for wss)."""
-import base64, json, os, socket, ssl, struct, sys, urllib.parse
+
+import base64
+import json
+import os
+import socket
+import ssl
+import struct
+import sys
+import urllib.parse
 
 
 class WS:
@@ -46,9 +54,11 @@ class WS:
         if n < 126:
             h.append(0x80 | n)
         elif n < 1 << 16:
-            h.append(0x80 | 126); h += struct.pack(">H", n)
+            h.append(0x80 | 126)
+            h += struct.pack(">H", n)
         else:
-            h.append(0x80 | 127); h += struct.pack(">Q", n)
+            h.append(0x80 | 127)
+            h += struct.pack(">Q", n)
         m = os.urandom(4)
         h += m
         self.s.sendall(bytes(h) + bytes(b ^ m[i % 4] for i, b in enumerate(payload)))
@@ -86,17 +96,23 @@ def main():
     print(f"auth_ok (HA {msg.get('ha_version')})", file=sys.stderr)
 
     commands = json.load(sys.stdin)
-    next_id = 0
-    for cmd in commands:
-        next_id += 1
+    for next_id, cmd in enumerate(commands, start=1):
         cmd = dict(cmd, id=next_id)
         ws.send(cmd)
         while True:
             r = ws.recv()
             if r.get("id") == next_id:
                 break
-        print(json.dumps({"cmd": cmd["type"], "ok": r.get("success"),
-                          "result": r.get("result"), "error": r.get("error")}))
+        print(
+            json.dumps(
+                {
+                    "cmd": cmd["type"],
+                    "ok": r.get("success"),
+                    "result": r.get("result"),
+                    "error": r.get("error"),
+                }
+            )
+        )
     return 0
 
 

@@ -1,0 +1,7 @@
+# bin/ha-kiosk-seed-token has no .py suffix, so it has to be named explicitly
+# on the command line; lint.sh does that.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

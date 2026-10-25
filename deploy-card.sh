@@ -26,12 +26,16 @@ WS_CLIENT="${WS_CLIENT:-$(dirname "$0")/tools/ha_ws.py}"
 export HA_TOKEN HA_WS_URL
 
 # kubectl takes --context only when one is named; passing an empty string
-# selects no context and fails. Written as an if rather than a && so that a
-# false test does not abort the script under `set -e`.
-KUBECTL_CONTEXT=""
-if [ -n "$CONTEXT" ]; then
-    KUBECTL_CONTEXT="--context $CONTEXT"
-fi
+# selects no context and fails. A wrapper keeps the arguments as arguments:
+# building a "--context x" string and leaving it unquoted would rely on word
+# splitting, which breaks on a context name containing a space.
+kube() {
+    if [ -n "$CONTEXT" ]; then
+        kubectl --context "$CONTEXT" "$@"
+    else
+        kubectl "$@"
+    fi
+}
 
 name="$(basename "$CARD")"
 hash="$(shasum -a 256 "$CARD" | cut -c1-12)"
@@ -39,9 +43,9 @@ url="/local/$(basename "$REMOTE_DIR")/$name?v=$hash"
 
 echo "Deploying $name ($hash)"
 
-kubectl $KUBECTL_CONTEXT -n "$NAMESPACE" exec "$POD" -c "$CONTAINER" -- \
+kube -n "$NAMESPACE" exec "$POD" -c "$CONTAINER" -- \
     mkdir -p "$REMOTE_DIR"
-kubectl $KUBECTL_CONTEXT -n "$NAMESPACE" cp "$CARD" \
+kube -n "$NAMESPACE" cp "$CARD" \
     "$NAMESPACE/$POD:$REMOTE_DIR/$name" -c "$CONTAINER" 2>/dev/null
 
 # Find the existing resource for this card, whatever version it currently

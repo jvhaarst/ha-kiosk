@@ -20,6 +20,7 @@ only, so the Pi needs no extra packages.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import socket
@@ -141,10 +142,8 @@ class WebSocket:
                 return b"".join(chunks).decode(errors="replace")
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._sock.close()
-        except OSError:
-            pass
 
 
 class DevTools:
@@ -214,7 +213,7 @@ def find_ha_target(debug_port: int, hass_origin: str, deadline: float) -> str:
     raise TimeoutError(last_error)
 
 
-def wait_for_origin(client: "DevTools", origin: str, deadline: float) -> None:
+def wait_for_origin(client: DevTools, origin: str, deadline: float) -> None:
     """Block until the tab's *document* is really on the Home Assistant origin.
 
     A DevTools target reports its destination URL as soon as navigation starts,

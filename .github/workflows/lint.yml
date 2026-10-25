@@ -1,0 +1,27 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The job name is what a branch protection rule has to name as a required
+  # check, so changing it means updating that rule too.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # shellcheck is already on the GitHub runner image, so there is nothing
+      # to install for it.
+      - name: Run linters
+        run: ./lint.sh

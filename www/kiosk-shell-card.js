@@ -131,7 +131,7 @@ class KioskShellCard extends HTMLElement {
    * home screen is already showing, so the kiosk sits on it indefinitely.
    */
   _startIdleWatch() {
-    const idle = this._config && this._config.idle_return;
+    const idle = this._config?.idle_return;
     if (!idle || !idle.path || !idle.seconds || this._idleHandler) return;
 
     this._idleHandler = () => this._resetIdle();
@@ -171,7 +171,7 @@ class KioskShellCard extends HTMLElement {
     clearTimeout(this._idleTimer);
     this._idleTimer = null;
 
-    const idle = this._config && this._config.idle_return;
+    const idle = this._config?.idle_return;
     if (!idle || !idle.path || !idle.seconds) return;
     if (window.location.pathname === idle.path) return;
 

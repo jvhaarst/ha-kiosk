@@ -104,6 +104,7 @@ dashboard is affected.
 | `kiosk.env.example` | Every site-specific setting, documented |
 | `tools/ha_ws.py` | Minimal Home Assistant WebSocket client |
 | `deploy-card.sh` | Pushes a card and busts the browser cache |
+| `lint.sh` | Runs every linter; CI runs this too |
 
 `tools/build-dashboard.py` is the source of truth for the dashboard. Editing it
 in the Home Assistant UI works, but the next run of the script overwrites it.
@@ -141,6 +142,17 @@ own, and keep `~/.config/ha-kiosk/token` at mode 600.
 Chromium's DevTools port is what makes the automatic login possible. Chromium
 binds it to 127.0.0.1 only, so it is reachable from the Pi itself and not from
 the network.
+
+## Linting
+
+```sh
+./lint.sh
+```
+
+shellcheck over the shell scripts, ruff over the Python, and biome over the
+JavaScript. Tool versions are pinned in `lint.sh`; `uvx` and `npx` fetch them,
+so nothing is installed globally. CI runs that same script, so a clean run
+locally means a clean run there.
 
 ## Things that cost time to find out
 
