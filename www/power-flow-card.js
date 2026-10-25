@@ -530,13 +530,21 @@ ha-card.pfc {
   pointer-events: none;
 }
 .pfc-waste-hidden { display: none; }
+/*
+ * Sized against the space actually available, measured in the browser: the
+ * connector column is 132px wide and there are 153px between the lower
+ * horizontal run and the bottom of the column. An 88px icon plus a 40px
+ * numeral and the padding comes to about 136px, which fills it with a little
+ * room rather than crowding the line above.
+ */
 .pfc-waste-icon {
-  --mdc-icon-size: 46px;
+  --mdc-icon-size: 88px;
   color: var(--pfc-waste-color, #616161);
 }
 .pfc-waste-days {
-  font-size: 26px;
+  font-size: 40px;
   line-height: 1;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--pfc-waste-color, #616161);
 }
