@@ -5,7 +5,7 @@ Pimoroni HyperPixel 4.0 Square. Chromium runs full-screen with no desktop, no
 browser chrome and no login screen, and comes back by itself if it crashes or
 the power drops.
 
-Four screens, switched by buttons along the bottom:
+Five screens, switched by buttons along the bottom:
 
 | Screen | Shows |
 | --- | --- |
@@ -13,6 +13,7 @@ Four screens, switched by buttons along the bottom:
 | Lampen | Lights, with brightness sliders and toggles on the cards |
 | CV&Airco | Heating and air conditioning |
 | Deurbel | Doorbell camera, with visitor, person and motion state |
+| Afval | Waste collection dates, colour-coded per stream |
 
 It jumps to the doorbell by itself when the bell rings, and returns to the
 first screen after two minutes with nobody touching it.

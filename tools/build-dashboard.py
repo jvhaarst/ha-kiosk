@@ -87,6 +87,7 @@ NAV = [
     {"name": "Lampen", "icon": "mdi:lightbulb-group", "path": f"/{URL_PATH}/lampen"},
     {"name": "CV&Airco", "icon": "mdi:thermostat", "path": f"/{URL_PATH}/cv-airco"},
     {"name": "Deurbel", "icon": "mdi:doorbell-video", "path": f"/{URL_PATH}/deurbel"},
+    {"name": "Afval", "icon": "mdi:trash-can", "path": f"/{URL_PATH}/afval"},
 ]
 
 
@@ -171,11 +172,60 @@ def deurbel():
     }
 
 
+def afval():
+    """Waste collection, drawn by the trash-card HACS plugin.
+
+    `pattern` matches on the calendar event titles, so these strings have to be
+    exactly what the collector publishes. The four here are the usual Dutch
+    streams; set TRASH_CALENDAR to your own calendar entity.
+    """
+    return {
+        "type": "custom:trash-card",
+        "entities": [os.environ.get("TRASH_CALENDAR", "calendar.waste_collection")],
+        "card_style": "card",
+        "hide_time_range": False,
+        "filter_events": False,
+        "next_days": 60,
+        "items_per_row": 2,
+        "pattern": [
+            {
+                "type": "waste",
+                "label": "GFT",
+                "icon": "mdi:leaf",
+                "color": "green",
+                "pattern": "GFT",
+            },
+            {
+                "type": "recycle",
+                "label": "Papier",
+                "icon": "mdi:newspaper-variant-multiple",
+                "color": "blue",
+                "pattern": "Papier",
+            },
+            {
+                "type": "recycle",
+                "label": "PMD",
+                "icon": "mdi:bottle-soda-classic",
+                "color": "orange",
+                "pattern": "PMD",
+            },
+            {
+                "type": "waste",
+                "label": "Restafval",
+                "icon": "mdi:trash-can",
+                "color": "grey",
+                "pattern": "Restafval",
+            },
+        ],
+    }
+
+
 SCREENS = [
     ("Stroom", "stroom", "mdi:transmission-tower", stroom),
     ("Lampen", "lampen", "mdi:lightbulb-group", lampen),
     ("CV&Airco", "cv-airco", "mdi:thermostat", cv_airco),
     ("Deurbel", "deurbel", "mdi:doorbell-video", deurbel),
+    ("Afval", "afval", "mdi:trash-can", afval),
 ]
 
 
