@@ -93,6 +93,25 @@ NAV = [
 
 def stroom():
     card = {"type": "custom:power-flow-card"}
+    # The next waste collection, shown in the connector column below the lower
+    # run. The icons and colours match the Afval screen so the same stream
+    # looks the same on both.
+    waste_entity = os.environ.get("WASTE_SENSOR", "sensor.waste_collection")
+    if waste_entity:
+        card["waste"] = {
+            "entity": waste_entity,
+            "streams": [
+                {"name": "GFT", "icon": "mdi:flower", "color": "#8BC34A"},
+                {
+                    "name": "Papier",
+                    "icon": "mdi:newspaper-variant-multiple-outline",
+                    "color": "#3F51B5",
+                },
+                {"name": "PMD", "icon": "mdi:trash-can-outline", "color": "#FF9800"},
+                {"name": "Restafval", "icon": "mdi:trash-can", "color": "#616161"},
+            ],
+        }
+
     for key, prefix, fallback in [
         ("grid", "GRID", "Net"),
         ("solar", "SOLAR", "Zon"),

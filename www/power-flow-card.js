@@ -172,6 +172,22 @@ class PowerFlowCard extends HTMLElement {
       };
     }
 
+    // The next waste collection, if configured: it sits in the connector
+    // column below the lower run, which is otherwise empty space.
+    if (config.waste) {
+      const waste = document.createElement("div");
+      waste.className = "pfc-waste";
+      waste.innerHTML = `
+        <ha-icon class="pfc-waste-icon"></ha-icon>
+        <span class="pfc-waste-days"></span>`;
+      stage.appendChild(waste);
+      this._nodes.waste = {
+        root: waste,
+        icon: waste.querySelector(".pfc-waste-icon"),
+        days: waste.querySelector(".pfc-waste-days"),
+      };
+    }
+
     card.appendChild(stage);
     this.appendChild(card);
   }
@@ -218,6 +234,54 @@ class PowerFlowCard extends HTMLElement {
       const line = this._nodes.lines[key];
       if (line) this._applyFlow(line, key, data.total);
     }
+
+    this._updateWaste();
+  }
+
+  /**
+   * Show the next waste collection: its stream's icon, and how many days off.
+   *
+   * The sensor's state reads like "Restafval in 2 days", but that is an
+   * English sentence and would break under a different language, so the next
+   * stream is worked out from the per-stream date attributes instead. Those
+   * are plain "YYYY-MM-DD" strings, compared at local midnight so that "today"
+   * and "tomorrow" land on 0 and 1 rather than on a fraction of a day.
+   */
+  _updateWaste() {
+    const node = this._nodes.waste;
+    if (!node) return;
+
+    const spec = this._config.waste;
+    const stateObj = this._hass.states[spec.entity];
+    if (!stateObj) {
+      node.root.classList.add("pfc-waste-hidden");
+      return;
+    }
+
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+
+    let soonest = null;
+    for (const stream of spec.streams || []) {
+      const raw = stateObj.attributes[stream.name];
+      if (!raw) continue;
+      const when = new Date(`${raw}T00:00:00`);
+      if (Number.isNaN(when.getTime())) continue;
+      const days = Math.round((when - midnight) / 86400000);
+      if (days < 0) continue;
+      if (!soonest || days < soonest.days) soonest = { stream, days };
+    }
+
+    if (!soonest) {
+      node.root.classList.add("pfc-waste-hidden");
+      return;
+    }
+
+    node.root.classList.remove("pfc-waste-hidden");
+    node.icon.setAttribute("icon", soonest.stream.icon || "mdi:trash-can");
+    node.root.style.setProperty("--pfc-waste-color", soonest.stream.color || "#616161");
+    node.days.textContent = String(soonest.days);
+    node.root.title = `${soonest.stream.name}: ${soonest.days}`;
   }
 
   /**
@@ -448,6 +512,34 @@ ha-card.pfc {
 }
 
 .pfc-phases { margin-top: 0; }
+
+/*
+ * The waste indicator shares the connector column's grid area and is pinned
+ * to the bottom of it, which puts it under the lower horizontal run rather
+ * than over the lines.
+ */
+.pfc-waste {
+  grid-area: 1 / 2 / 3 / 3;
+  align-self: end;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 6px;
+  pointer-events: none;
+}
+.pfc-waste-hidden { display: none; }
+.pfc-waste-icon {
+  --mdc-icon-size: 46px;
+  color: var(--pfc-waste-color, #616161);
+}
+.pfc-waste-days {
+  font-size: 26px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--pfc-waste-color, #616161);
+}
 .pfc-phase {
   display: flex;
   justify-content: space-between;
