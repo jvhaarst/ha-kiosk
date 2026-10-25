@@ -143,6 +143,38 @@ Chromium's DevTools port is what makes the automatic login possible. Chromium
 binds it to 127.0.0.1 only, so it is reachable from the Pi itself and not from
 the network.
 
+## Backlight dimming
+
+The stock HyperPixel overlay wires the backlight as a `gpio-backlight` on
+GPIO 19, which has `max_brightness` 1: on or off, nothing between.
+`overlays/hyperpixel4sq-pwmbl-overlay.dts` is a fork that drives the same pin
+as PWM1 instead, giving sixteen levels:
+
+```sh
+dtc -@ -I dts -O dtb -o hyperpixel4sq-pwmbl.dtbo \
+    overlays/hyperpixel4sq-pwmbl-overlay.dts
+sudo cp hyperpixel4sq-pwmbl.dtbo /boot/firmware/overlays/
+# then in /boot/firmware/config.txt replace
+#   dtoverlay=vc4-kms-dpi-hyperpixel4sq
+# with
+#   dtoverlay=hyperpixel4sq-pwmbl
+```
+
+After a reboot, `/sys/class/backlight/backlight/brightness` takes 0 to 15.
+
+**This disables the analogue headphone output.** The Pi's 3.5mm jack uses both
+PWM channels, so the backlight has to take one of them. Raspberry Pi's own
+`vc4-kms-dpi-panel` overlay carries the same warning. The overlay passes
+`snd_bcm2835.enable_headphones=0` to make that explicit rather than letting the
+two fight over PWM1.
+
+The overlay is deliberately not named after a stock one. The kernel upgrade
+hook copies overlays with `rsync -ct` and no `--delete`, so a file it does not
+ship is left alone, while a same-named one would be overwritten on every
+kernel upgrade. Nothing needs rebuilding per kernel: overlays are device tree
+blobs, not modules. The source is kept here so that a future diff against the
+upstream overlay is quick if Raspberry Pi change it.
+
 ## Linting
 
 ```sh

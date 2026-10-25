@@ -1,0 +1,190 @@
+/*
+ * hyperpixel4sq-pwmbl-overlay.dts
+ *
+ * HyperPixel 4.0 Square with a dimmable backlight.
+ *
+ * The stock vc4-kms-dpi-hyperpixel4sq overlay wires the backlight as a
+ * gpio-backlight on GPIO 19, which has max_brightness 1: on or off, nothing
+ * between. GPIO 19 is PWM1 (Alt5) on BCM2835/2836/2837, so the same pin can
+ * be driven as a PWM backlight instead, which is what this overlay does.
+ *
+ * It is a fork of the upstream overlay, flattened: the contents of
+ * vc4-kms-dpi-hyperpixel.dtsi are inlined and the dt-bindings macros replaced
+ * by their values, so this file compiles with dtc alone and needs no kernel
+ * source tree. The macro values used are GPIO_ACTIVE_HIGH 0, GPIO_ACTIVE_LOW
+ * 1, BCM2835_PUD_OFF 0 and BCM2835_PUD_UP 2.
+ *
+ * The PWM fragments follow Raspberry Pi's own implementation in
+ * vc4-kms-dpi-panel-overlay.dts, including its sixteen gamma-spaced
+ * brightness levels, rather than being invented here.
+ *
+ * TRADE-OFF: the Pi's analogue headphone output uses both PWM channels, so
+ * claiming PWM1 disables it. That is what the bootargs fragment below states
+ * explicitly, the same way the stock panel overlay does.
+ *
+ * Build and install:
+ *   dtc -@ -I dts -O dtb -o hyperpixel4sq-pwmbl.dtbo hyperpixel4sq-pwmbl-overlay.dts
+ *   sudo cp hyperpixel4sq-pwmbl.dtbo /boot/firmware/overlays/
+ * The name is deliberately not one of the stock overlay names: the kernel
+ * upgrade hook runs `rsync -ct` without --delete, so a file it does not ship
+ * is left alone, while a same-named one would be overwritten every upgrade.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			spi {
+				compatible = "spi-gpio";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				pinctrl-0 = <&spi_pins>;
+				pinctrl-names = "default";
+
+				sck-gpios = <&gpio 27 0>;
+				mosi-gpios = <&gpio 26 0>;
+				cs-gpios = <&gpio 18 1>;
+				num-chipselects = <1>;
+				sck-idle-input;
+
+				panel: display@0 {
+					reg = <0>;
+					/* 100 kHz */
+					spi-max-frequency = <100000>;
+					compatible = "pimoroni,hyperpixel4square";
+					backlight = <&backlight>;
+					rotation = <0>;
+
+					port {
+						panel_in: endpoint {
+							remote-endpoint = <&dpi_out>;
+						};
+					};
+				};
+			};
+
+			/*
+			 * pwm-backlight rather than the stock gpio-backlight.
+			 * Channel 1 is PWM1, which is the channel GPIO 19 maps
+			 * to. 200000ns is a 5 kHz period, as upstream uses.
+			 */
+			backlight: backlight {
+				compatible = "pwm-backlight";
+				brightness-levels = <0 6 8 12 16 24 32 40
+						     48 64 96 128 160 192 224 255>;
+				/*
+				 * brightness-levels above is indexed 0..15, so
+				 * 15 is the top. Setting 16 here makes the
+				 * kernel log "invalid default brightness level:
+				 * 16, using 15" and clamp it.
+				 */
+				default-brightness-level = <15>;
+				pwms = <&pwm 1 200000 0>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&dpi>;
+		__overlay__  {
+			status = "okay";
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&dpi_18bit_cpadhi_gpio0>;
+
+			port {
+				dpi_out: endpoint {
+					remote-endpoint = <&panel_in>;
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&gpio>;
+		__overlay__ {
+			spi_pins: hyperpixel4_spi_pins {
+				brcm,pins = <27 18 26>;
+				brcm,pull = <2 2 0>;
+				brcm,function = <0>;
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/";
+		__overlay__ {
+			i2c_gpio: i2c@0 {
+				compatible = "i2c-gpio";
+				gpios = <&gpio 10 0 /* sda */
+					 &gpio 11 0>; /* scl */
+				i2c-gpio,delay-us = <4>;        /* ~100 kHz */
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+		};
+	};
+
+	fragment@11 {
+		target = <&i2c_gpio>;
+		__overlay__ {
+			polytouch: edt-ft5x06@48 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "edt,edt-ft5406";
+				reg = <0x48>;
+				interrupt-parent = <&gpio>;
+				interrupts = <27 0x02>;
+				touchscreen-size-x = <720>;
+				touchscreen-size-y = <720>;
+			};
+		};
+	};
+
+	/* Turn the PWM block on and point it at the backlight pin. */
+	fragment@12 {
+		target = <&pwm>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pwm_pins>;
+			assigned-clock-rates = <1000000>;
+			status = "okay";
+		};
+	};
+
+	/* GPIO 19 in function 2 is Alt5, which is PWM1. */
+	fragment@13 {
+		target = <&gpio>;
+		__overlay__ {
+			pwm_pins: pwm_pins {
+				brcm,pins = <19>;
+				brcm,function = <2>;
+			};
+		};
+	};
+
+	/*
+	 * Analogue audio drives both PWM channels, so it has to give up the
+	 * one the backlight now uses. Without this the two fight over PWM1.
+	 */
+	fragment@14 {
+		target = <&chosen>;
+		__overlay__ {
+			bootargs = "snd_bcm2835.enable_headphones=0";
+		};
+	};
+
+	__overrides__ {
+		rotate = <&panel>, "rotation:0";
+		disable-touch = <0>,"-11";
+		touchscreen-inverted-x = <&polytouch>,"touchscreen-inverted-x?";
+		touchscreen-inverted-y = <&polytouch>,"touchscreen-inverted-y!";
+		touchscreen-swapped-x-y = <&polytouch>,"touchscreen-swapped-x-y!";
+		default-brightness = <&backlight>,"default-brightness-level:0";
+	};
+};
