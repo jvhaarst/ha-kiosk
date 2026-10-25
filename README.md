@@ -90,6 +90,34 @@ module (`NemesisRE/kiosk-mode`), installed through HACS and registered as a
 resource. The dashboard carries a `kiosk_mode` block of its own, so only this
 dashboard is affected.
 
+## Where configuration lives
+
+Three places, with different owners. This catches people out, so:
+
+| File | Holds | Read by |
+| --- | --- | --- |
+| `~/.config/ha-kiosk/env` **on the Pi** | Home Assistant URL, which dashboard to open, token path, Chromium profile, and every `SCREEN_*` blanking setting | `ha-kiosk-launch`, `ha-kiosk-screen` |
+| `kiosk.env` **on the workstation** | which entities each screen shows, their labels, and how to reach Home Assistant's container | `deploy-card.sh`, `tools/build-dashboard.py` |
+| The dashboard itself, in Home Assistant | the views and cards | Home Assistant |
+
+The blanking schedule is in the first of those, so it keeps working when Home
+Assistant is down or the network drops, and Home Assistant cannot see or
+override it.
+
+A copy of the Pi's file is kept here as `pi.env` so the schedule does not live
+only on an SD card. Both it and `kiosk.env` are gitignored. To refresh the copy,
+or to put it back on a rebuilt Pi:
+
+```sh
+scp <user>@<kiosk-host>:.config/ha-kiosk/env ./pi.env      # pull
+scp ./pi.env <user>@<kiosk-host>:.config/ha-kiosk/env      # push
+ssh <user>@<kiosk-host> 'sudo systemctl restart ha-kiosk-screen@$(id -un)'
+```
+
+The long-lived access token is deliberately **not** copied. It is a credential
+rather than configuration, a new one takes a minute to issue, and keeping it in
+one place is the point.
+
 ## How it fits together
 
 | File | Purpose |

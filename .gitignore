@@ -1,3 +1,7 @@
-# Real settings. kiosk.env.example carries the shape; this carries the values.
+# Real settings. The .example files carry the shape; these carry the values.
+# kiosk.env drives the deploy scripts from this machine; pi.env is a copy of
+# the kiosk's own ~/.config/ha-kiosk/env, kept here so the schedule does not
+# live only on an SD card.
 kiosk.env
+pi.env
 __pycache__/
