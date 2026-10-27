@@ -172,6 +172,22 @@ class PowerFlowCard extends HTMLElement {
       };
     }
 
+    // The clock, if configured: the connector column above the upper run is
+    // empty, and mirrors the waste indicator below it.
+    if (config.clock) {
+      const clock = document.createElement("div");
+      clock.className = "pfc-clock";
+      clock.innerHTML = `
+        <span class="pfc-clock-time"></span>
+        <span class="pfc-clock-date"></span>`;
+      stage.appendChild(clock);
+      this._nodes.clock = {
+        time: clock.querySelector(".pfc-clock-time"),
+        date: clock.querySelector(".pfc-clock-date"),
+      };
+      this._startClock();
+    }
+
     // The next waste collection, if configured: it sits in the connector
     // column below the lower run, which is otherwise empty space.
     if (config.waste) {
@@ -282,6 +298,69 @@ class PowerFlowCard extends HTMLElement {
     node.root.style.setProperty("--pfc-waste-color", soonest.stream.color || "#616161");
     node.days.textContent = String(soonest.days);
     node.root.title = `${soonest.stream.name}: ${soonest.days}`;
+  }
+
+  /**
+   * Tick the clock on the minute.
+   *
+   * Once a minute rather than once a second: the display shows no seconds, and
+   * this runs on a Raspberry Pi 3B that is already slow at repainting. The
+   * first tick is aligned to the next whole minute so the digits change when
+   * they should rather than drifting by however long after boot this started.
+   */
+  _startClock() {
+    this._renderClock();
+    const msToNextMinute = 60000 - (Date.now() % 60000);
+    this._clockTimer = setTimeout(() => {
+      this._renderClock();
+      this._clockTimer = setInterval(() => this._renderClock(), 60000);
+    }, msToNextMinute);
+  }
+
+  _stopClock() {
+    // Home Assistant replaces a card element as it re-renders, and a timer
+    // left running on a discarded instance keeps firing against detached
+    // nodes. The same mistake cost a day on the shell card's idle timer.
+    clearTimeout(this._clockTimer);
+    clearInterval(this._clockTimer);
+    this._clockTimer = null;
+  }
+
+  disconnectedCallback() {
+    this._stopClock();
+  }
+
+  connectedCallback() {
+    if (this._nodes?.clock && !this._clockTimer) this._startClock();
+  }
+
+  _renderClock() {
+    const node = this._nodes?.clock;
+    if (!node) return;
+
+    const spec = this._config.clock === true ? {} : this._config.clock || {};
+    // Follow Home Assistant's own language, so the weekday and month read the
+    // way the rest of the dashboard does.
+    const locale = spec.locale || this._hass?.locale?.language || undefined;
+
+    // Take the timezone from Home Assistant rather than trusting the browser.
+    // The Pi this runs on shipped with its timezone set to Etc/UTC, so the
+    // clock read an hour behind until that was corrected; naming the zone
+    // means the card is right whatever the host is set to.
+    const timeZone = spec.time_zone || this._hass?.config?.time_zone || undefined;
+
+    const now = new Date();
+    node.time.textContent = now.toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone,
+    });
+    node.date.textContent = now.toLocaleDateString(locale, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone,
+    });
   }
 
   /**
@@ -512,6 +591,41 @@ ha-card.pfc {
 }
 
 .pfc-phases { margin-top: 0; }
+
+/*
+ * The clock sits at the top of the connector column, above the upper run.
+ * Sized to fit 132px of width: the time is the widest thing on the card per
+ * character, and tabular digits keep it from twitching as the minutes change.
+ */
+.pfc-clock {
+  /* Row 1 only, and half its height: the upper connector run sits at the
+     middle of that row, so the top half is exactly the free space. Centring
+     inside that box keeps the clock centred whatever the panel size, rather
+     than relying on a padding figure that only holds at 720x720. */
+  grid-area: 1 / 2 / 2 / 3;
+  align-self: start;
+  justify-self: center;
+  height: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.pfc-clock-time {
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-text-color, #212121);
+}
+.pfc-clock-date {
+  font-size: 16px;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--secondary-text-color, #727272);
+}
 
 /*
  * The waste indicator shares the connector column's grid area and is pinned

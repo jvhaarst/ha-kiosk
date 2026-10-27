@@ -93,6 +93,9 @@ NAV = [
 
 def stroom():
     card = {"type": "custom:power-flow-card"}
+    # Date and time at the top of the connector column, above the upper run.
+    card["clock"] = True
+
     # The next waste collection, shown in the connector column below the lower
     # run. The icons and colours match the Afval screen so the same stream
     # looks the same on both.
