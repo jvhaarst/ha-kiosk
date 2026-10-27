@@ -9,7 +9,7 @@ Five screens, switched by buttons along the bottom:
 
 | Screen | Shows |
 | --- | --- |
-| Stroom | Power flow between grid, solar, house and EV charger |
+| Stroom | Power flow between grid, solar, house and EV charger, with a clock and the next waste collection |
 | Lampen | Lights, with brightness sliders and toggles on the cards |
 | CV&Airco | Heating and air conditioning |
 | Deurbel | Doorbell camera, with visitor, person and motion state |
@@ -24,6 +24,9 @@ first screen after two minutes with nobody touching it.
 - A HyperPixel 4.0 Square, enabled with `dtoverlay=vc4-kms-dpi-hyperpixel4sq`
   in `/boot/firmware/config.txt`
 - Chromium and Python 3 on the Pi; the scripts use the standard library only
+- The Pi's timezone set correctly, with `timedatectl set-timezone <zone>`. The
+  blanking schedule is evaluated in local time, so a host left on `Etc/UTC`
+  blanks the screen at the wrong hour and nothing says so
 - Home Assistant 2026.10 or newer
 - `kubectl` reaching the cluster, if Home Assistant runs in Kubernetes; the
   deploy scripts copy files into its container
@@ -309,6 +312,14 @@ a replaced instance still fires. The idle-return countdown therefore keeps the
 last interaction time on `window`, shared by every instance, and a timer that
 fires re-checks it and re-arms rather than navigating. Before that, a screen
 returned home on a fixed schedule no matter how much the panel was touched.
+
+**Check the host's timezone.** This Pi shipped on `Etc/UTC` while the house
+is CET, so the blanking schedule fired an hour early from the day it was
+installed and nothing reported it. It only surfaced once a clock was put on
+screen next to a time a person could check. Anything scheduled in local time
+on an appliance deserves that check first. The clock card itself now takes its
+timezone from `hass.config.time_zone` rather than the browser, so it is right
+regardless of the host.
 
 **Measure in the browser, not on paper.** The flow card's type size was settled
 by substituting worst-case strings into the DOM and reading back
