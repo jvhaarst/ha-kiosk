@@ -215,7 +215,7 @@ the browser or the session has died.
 SCREEN_WAKE_WEEKDAY=07:00
 SCREEN_WAKE_WEEKEND=08:00
 SCREEN_SLEEP=23:30
-SCREEN_MIDDAY_OFF_DAYS=Mon,Thu
+SCREEN_MIDDAY_OFF_DAYS=Mon,Tue,Thu,Fri
 SCREEN_MIDDAY_FROM=08:30
 SCREEN_MIDDAY_TO=17:00
 SCREEN_TOUCH_SECONDS=60
@@ -226,9 +226,16 @@ Which works out as:
 
 | Day | On |
 | --- | --- |
-| Mon, Thu | 07:00-08:30, 17:00-23:30 |
-| Tue, Wed, Fri | 07:00-23:30 |
+| Mon, Tue, Thu, Fri | 07:00-08:30, 17:00-23:30 |
+| Wed | 07:00-23:30 |
 | Sat, Sun | 08:00-23:30 |
+
+The hours are worth deriving rather than guessing. These came from the house
+heating programme, which turned out not to be in Home Assistant at all: the
+thermostat exposes only one slot of it at a time. Ten days of history for the
+target-temperature entity gave the whole pattern instead, by counting which
+switches recurred. An hour is added in the evening so the screen outlasts the
+heating; the midday gap follows it exactly.
 
 The panel is an IPS LCD, so it does not burn in the way an OLED does, but it
 does retain an image when it holds the same picture for days, and a kiosk
